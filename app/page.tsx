@@ -1,69 +1,301 @@
-import Image from "next/image";
+
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+type FormData = {
+  name: string;
+  phone: string;
+  email: string;
+  instagram: string;
+};
 
 export default function Home() {
+  const [form, setForm] = useState<FormData>({
+    name: "",
+    phone: "",
+    email: "",
+    instagram: "",
+  });
+
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  function updateField(field: keyof FormData, value: string) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function startCamera() {
+    setError("");
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Camera access requires HTTPS or localhost.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setCameraOn(true);
+    } catch {
+      setError(
+        "Unable to access the camera. Allow camera permission and try again."
+      );
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraOn(false);
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas || video.videoWidth === 0) {
+      setError("Camera is not ready. Please try again.");
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      setError("Unable to capture the image.");
+      return;
+    }
+
+    // Mirror the image to match the front-camera preview.
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    setPhoto(canvas.toDataURL("image/jpeg", 0.85));
+    setError("");
+    stopCamera();
+  }
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    setMessage("");
+
+    if (!photo) {
+      setError("Please capture your face photo first.");
+      return;
+    }
+
+    // Demo only: this does not save data to a database.
+    // Send the form and photo to a secure backend when ready.
+    console.log({
+      ...form,
+      facePhoto: photo,
+    });
+
+    setMessage("Form validated successfully!");
+  }
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="page">
+      <section className="form-card">
+        <div className="header">
+          <div className="logo">FR</div>
+          <p className="eyebrow">FACE REGISTRATION</p>
+          <h1>Create your profile</h1>
+          <p className="subtitle">
+            Enter your details and capture a photo to register.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        <form onSubmit={handleSubmit}>
+          <div className="field">
+            <label htmlFor="name">Full name</label>
+            <input
+              id="name"
+              type="text"
+              placeholder="Enter your full name"
+              autoComplete="name"
+              value={form.name}
+              onChange={(e) => updateField("name", e.target.value)}
+              required
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+          </div>
+
+          <div className="field">
+            <label htmlFor="phone">Phone number</label>
+            <input
+              id="phone"
+              type="tel"
+              placeholder="+91 98765 43210"
+              autoComplete="tel"
+              pattern="[+]?[0-9 ()-]{8,20}"
+              value={form.phone}
+              onChange={(e) => updateField("phone", e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="email">Email address</label>
+            <input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              value={form.email}
+              onChange={(e) => updateField("email", e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="instagram">Instagram ID</label>
+            <div className="input-prefix">
+              <span>@</span>
+              <input
+                id="instagram"
+                type="text"
+                placeholder="yourusername"
+                value={form.instagram}
+                onChange={(e) =>
+                  updateField(
+                    "instagram",
+                    e.target.value.replace(/^@/, "")
+                  )
+                }
+                required
+              />
+            </div>
+          </div>
+
+          <div className="divider" />
+
+          <div className="camera-heading">
+            <div>
+              <h2>Face photo</h2>
+              <p>Position your face inside the camera frame.</p>
+            </div>
+            <span className="camera-icon">◎</span>
+          </div>
+
+          <div className="camera-box">
+            {photo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="captured-photo" src={photo} alt="Captured face" />
+            ) : cameraOn ? (
+              <video
+                ref={videoRef}
+                className="camera-video"
+                autoPlay
+                muted
+                playsInline
+              />
+            ) : (
+              <div className="camera-placeholder">
+                <div className="face-outline">
+                  <svg
+                    viewBox="0 0 100 120"
+                    width="76"
+                    height="92"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <ellipse cx="50" cy="39" rx="25" ry="32" />
+                    <path d="M12 112 C14 77 32 68 50 68 C68 68 86 77 88 112" />
+                  </svg>
+                </div>
+                <p>Camera preview will appear here</p>
+              </div>
+            )}
+          </div>
+
+          <canvas ref={canvasRef} hidden />
+
+          <div className="camera-actions">
+            {photo ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setPhoto(null);
+                  setMessage("");
+                }}
+              >
+                Retake photo
+              </button>
+            ) : cameraOn ? (
+              <>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={stopCamera}
+                >
+                  Cancel camera
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={capturePhoto}
+                >
+                  Capture photo
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="primary-button full-button"
+                onClick={startCamera}
+              >
+                Open camera
+              </button>
+            )}
+          </div>
+
+          {error && <p className="error">{error}</p>}
+          {message && <p className="success">{message}</p>}
+
+          <button type="submit" className="submit-button">
+            Submit registration <span>→</span>
+          </button>
+
+          <p className="privacy-note">
+            Your camera is activated only when you choose to open it.
+            This demo does not upload or save your information.
+          </p>
+        </form>
+      </section>
+    </main>
   );
 }
